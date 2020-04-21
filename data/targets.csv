@@ -1,0 +1,22 @@
+FileName;ShortName;Titulo;Grupo;Sexo
+GSM1657523_Smoke_M121.CEL;M121_Smoke;Smoke_fetal_lung_rep1 [mRNA];Smoke_Male;Macho
+GSM1657524_Smoke_M191.CEL;M191_Smoke;Smoke_fetal_lung_rep2 [mRNA];Smoke_Male;Macho
+GSM1657525_Smoke_M205.CEL;M205_Smoke;Smoke_fetal_lung_rep3 [mRNA];Smoke_Male;Macho
+GSM1657526_Smoke_M207.CEL;M207_Smoke;Smoke_fetal_lung_rep4 [mRNA];Smoke_Male;Macho
+GSM1657527_Smoke_M443.CEL;M443_Smoke;Smoke_fetal_lung_rep5 [mRNA];Smoke_Male;Macho
+GSM1657528_Smoke_M447.CEL;M447_Smoke;Smoke_fetal_lung_rep6 [mRNA];Smoke_Male;Macho
+GSM1657529_Smoke_F195.CEL;F195_Smoke;Smoke_fetal_lung_rep7 [mRNA];Smoke_Female;Hembra
+GSM1657530_Smoke_F197.CEL;F197_Smoke;Smoke_fetal_lung_rep8 [mRNA];Smoke_Female;Hembra
+GSM1657531_Smoke_F201.CEL;F201_Smoke;Smoke_fetal_lung_rep9 [mRNA];Smoke_Female;Hembra
+GSM1657532_Smoke_F202.CEL;F202_Smoke;Smoke_fetal_lung_rep10 [mRNA];Smoke_Female;Hembra
+GSM1657533_Smoke_F444.CEL;F444_Smoke;Smoke_fetal_lung_rep11 [mRNA];Smoke_Female;Hembra
+GSM1657534_Smoke_F445.CEL;F445_Smoke;Smoke_fetal_lung_rep12 [mRNA];Smoke_Female;Hembra
+GSM1657535_Ctrl_M141.CEL;M141_Control;Control_fetal_lung_rep1 [mRNA];Control_Male;Macho
+GSM1657536_Ctrl_M187.CEL;M187_Control;Control_fetal_lung_rep2 [mRNA];Control_Male;Macho
+GSM1657537_Ctrl_M307.CEL;M307_Control;Control_fetal_lung_rep3 [mRNA];Control_Male;Macho
+GSM1657538_Ctrl_M386.CEL;M386_Control;Control_fetal_lung_rep4 [mRNA];Control_Male;Macho
+GSM1657539_Ctrl_M421.CEL;M421_Control;Control_fetal_lung_rep5 [mRNA];Control_Male;Macho
+GSM1657540_Ctrl_F181.CEL;F181_Control;Control_fetal_lung_rep6 [mRNA];Control_Female;Hembra
+GSM1657541_Ctrl_F301.CEL;F301_Control;Control_fetal_lung_rep7 [mRNA];Control_Female;Hembra
+GSM1657542_Ctrl_F381.CEL;F381_Control;Control_fetal_lung_rep8 [mRNA];Control_Female;Hembra
+GSM1657543_Ctrl_F427.CEL;F427_Control;Control_fetal_lung_rep9 [mRNA];Control_Female;Hembra

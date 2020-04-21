@@ -1,0 +1,949 @@
+---
+title: 'PEC1: Análisis de Datos Omicos'
+author: "Natalia Díaz González"
+date: "15/4/2020"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: 3
+    fig_caption: yes        
+    includes:  
+      in_header: my_header.tex
+  prettydoc::html_pretty:
+    toc: yes
+    theme: hpstr
+  word_document:
+    toc: yes
+    toc_depth: '2'
+  editor_options:
+    chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(fig.pos = "!H", out.extra = "", echo = TRUE, message = FALSE, warning = FALSE, comment = NA, prompt = TRUE, tidy = FALSE, fig.width = 7, fig.height = 7, fig_caption = TRUE,cache=FALSE)
+Sys.setlocale("LC_TIME", "C")
+```
+
+```{r echo=FALSE}
+if(!(require(printr))) {
+  install.packages(
+    'printr',
+    type = 'source',
+    repos = c('http://yihui.name/xran', 'http://cran.rstudio.com')
+  )
+}
+```
+
+# 1. Introducción y Objetivos
+
+Tras la finalización de las primeras unidades, procedemos a poner en práctica y unificar los conocimientos adquiridos mediante esta PEC cuyo objetivo es realizar un análisis de datos de Microarrays. Para ello:
+
+- Se partirá de un problema y unos datos públicos y se reanalizarán siguiendo las pautas presentadas en los materiales y discutidas en los dos primeros debates.
+- Una vez obtenidos los resultados se procederá a redactar un informe con la estructura tradicional de un informe científico-técnico.
+
+La presentacion de esta práctica se realizará en formato PDF mediante el uso de Markdown.
+
+Los datos y el código para el análisis se pueden localizar mediante el siguiente repositorio de github:
+
+*www.github.com/ASPteaching/Omics_Data_Analysis-Case_Study_1-Microarrays*.
+
+## 1.1. Palabras Clave
+
+Microarrays, Bioconductor, R, Genes expresados Diferencialmente.
+
+## 1.2. Objetivos
+
+El objetivo de esta PEC es ilustrar el proceso de análisis de microarrays mediante la realización de un estudio, de principio a fin, tal como se llevará a cabo en una situación real. Este estudio se seleccionará de la Base de Datos “Gene Expression Omnibus (GEO)” a la que podemos acceder mediante la url:
+
+*<http://www.ncbi.nlm.nih.gov/geo/browse/?view=series>*.  
+
+Para la selección del mismo, he seguido las pautas marcadas en el enunciado de la PEC:
+
+- El estudio ideal debería tener pocas muestras (10-30).
+- 2-3 comparaciones.
+- Que se haya realizado con microarrays de marca Afymetrix, es decir, que utilice archivos .CEL
+
+Tras revisar varios casos de estudio me he decantado por la selección del experimento __GSE67883__, relacionado con el análisis de la desregularización de hormonas de crecimiento pulmonar después de la exposición al humo del tabaco intrauterino.
+
+La exposición prenatal al humo del tabaco es un factor de riesgo significativo para el desarrollo de enfermedades de las vías respiratorias. Además, la alta prevalencia de mujeres embarazadas que fuman requiere el establecimiento de estrategias para la protección pulmonar de la descendencia. El objetivo del estudio del artículo consiste en comprender el mecanismo molecular de cómo la exposición prenatal al humo afecta al desarrollo pulmonar fetal. Para ello, se utiliza un modelo de ratón que recapitula los hallazgos clínicos de niños expuestos prenatalmente, donde ratones embarazadas fueron expuestos al humo hasta la cesárea o parto espontáneo, y se monitoreó el desarrollo del peso de la descendencia y la función pulmonar. Con los resultados del mismo se pretende demostrar que los ratones expuestos prenatalmente muestran un retraso del crecimiento intrauterino y postnatal, y deterioro de la función pulmonar.
+
+Sin embargo, a diferencia del objetivo del artículo, el objetivo de nuestro análisis es encontrar genes diferencialmente expresados entre aquellos ratones que se tomaron como control y aquellos que fueron expuestos al humo del tabaco (madre expuesta vs control) teniendo en cuenta el sexo de la descendencia (macho vs hembra). 
+
+# 2. Materiales y Métodos
+
+## 2.1. Métodos
+
+Para llevar a cabo el análisis de Microarrays debemos proceder de forma ordenada y siguiendo el método científico. Este análisis puede ser fácilmente visualizado como un proceso que empieza por una pregunta biológica y concluye con una interpretación de los resultados de los análisis que, de alguna forma nos acerque un poco a la respuesta de la pregunta inicial. 
+
+![Imagen_Analisis_Microarrays](C:/Users/Natalia/Master/Datos_omicos_2/PEC1/Analisis_Microarrays.jpg "Imagen Proceso Analisis Microarrays")
+
+Para realizar un análisis completo de Microarrays debemos seguir los siguientes pasos:
+
+1. __Lectura de los Datos__
+
+2. __Preprocesado__:
+    * Exploración y visualización
+    * Control de Calidad
+    * Normalización
+    * Filtraje
+
+3. __Selección de genes expresados diferencialmente__:
+    * Análisis de Modelos Lineales: matriz de Diseño y de Contrastes
+    * Selección de genes expresados diferencialmente
+
+4. __Post-Procesado__:
+    * Comparaciones
+    * Anotaciones
+    * Análisis de significación biólogica
+
+Para realizar el **preprocesado** de los datos crudos obtenidos de los archivos CEL hemos empleado el método de RMA mediante el cual se efecturán los siguientes pasos:
+
+--> Corrección de fondo
+--> Normalización para hacer los valores de los arrays comparables
+--> Resumen de las diversas sondas asociadas a cada grupo de sondas para dar un único valor.
+
+Una vez obtenidos los datos normalizados, procedemos a la realización de un **filtraje** a través del cual eliminaremos aquellos genes que apenas varían entre condiciones o que deseamos quitar.
+
+Para efectuar la **selección de genes diferencialmente expresados** debemos realizar una serie de pruebas, generalmente en términos de genes, para comparar la expresión de genes entre grupos. En nuestro caso, se aplicará la aproximación presentada por Smyth basada en la utilización del modelo lineal general, es decir, se trata de ajustar un modelo lineal a cada gen para detectar diferencias de expresión. 
+
+A fin de controlar el porcentaje de falsos positivos que puedan resultar del alto número de contrastes realizados simultáneamente, los p-valores se ajustan de forma que tengamos control sobre la tasa de falsos positivos utilizando el método de Benjamini y Hochberg.
+
+Una vez identificados los genes expresados diferencialmente, trataremos de agrupar los mismos para localizar posibles patrones comunes entre las condiones experimentales. Para ello, nos apoyaremos, como se hará a lo largo de todo el análisis, de gráficas que nos ayuden a visualizar dichas agrupaciones: diagrama de Venn, mapas de calor, dendogramas...
+
+En el proceso de **“anotación”** buscaremos información para asociar los identificadores de los genes, generalmente correspondientes a sondas o transcripciones que dependen del tipo de matriz, con nombres más familiares como el Símbolo del gen, el Identificador del gen Entrez o la descripción del gen.
+
+Para finalizar el análisis, se realizará un **Análisis de Significacion Biológica** que busca establecer si, dada una lista de genes seleccionados por ser diferencial expresada entre dos condiciones, las funciones, procesos biológicos o vías moleculares que los caracterizan, aparecen en esta lista con más frecuencia que entre el resto de los genes analizados.
+
+## 2.2. Herramientas Bioinformáticas
+
+Para la realización del análisis de microarrays hemos empleado las facilidades que ofrecen R Studio y las librerías de Bioconductor. Para el correcto funcionamiento del análisis debemos aseguramos que disponermos de las versiones compatibles en ambos casos. En el caso que nos compete, la versión de R Studio es la 3.6.2 y la versión de Bioconductor corresponde a la 3.10.
+
+### 2.2.1. Instalación de Paquetes en R
+
+Para poder realizar el análisis, debemos asegurarnos que disponemos de todos los paquetes necesarios que descargaremos del repositorio CRAN en el caso de paquetes estándar o Bioconductor para paquetes Bioconductor. La instalación se llevará a cabo por medio del siguiente código:
+
+```{r installPackages, message=FALSE, warning=FALSE, eval=FALSE}
+#install.packages("knitr")
+#install.packages("colorspace")
+#install.packages("gplots")
+#install.packages("ggplot2")
+#install.packages("ggrepel")
+#install.packages("htmlTable")
+#install.packages("prettydoc")
+#install.packages("devtools")
+#install.packages("BiocManager")
+#BiocManager::install("oligo")
+#BiocManager::install("pd.mogene.2.1.st")
+#BiocManager::install("arrayQualityMetrics")
+#BiocManager::install("pvca")
+# El siguiente código se empleará una vez se haya realizado el análisis
+#BiocManager::install("limma")
+#BiocManager::install("genefilter")
+#BiocManager::install("mogene21sttranscriptcluster.db")
+#BiocManager::install("annotate")
+#BiocManager::install("org.Mm.eg.db")
+#BiocManager::install("ReactomePA")
+#BiocManager::install("reactome.db")
+```
+
+# 3. Datos 
+
+La obtención de los datos se localiza en la base de datos Omnibus de expresión genética (GEO). El conjunto de datos seleccionado se identifica con el número de acceso: __GSE67883__ y se puede localizar toda la información del mismo mediante la siguiente url: 
+
+*<https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE67883>*.
+
+Además, podemos acceder al artículo completo de Dehmel titulado *"Intrauterine smoke exposure deregulates lung function, pulmonary transcriptomes, and in particular insulin-like growth factor (IGF)-1 in a sex-specific manner"* a través del siguiente link: 
+
+*<https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5953988/>*
+
+Los microarrays utilizados para este experimento fueron del tipo Mouse Gene 2.1 ST Array de Affymetrix. Se realizaron análisis de microarrays de expresión de ARNm en tejido pulmonar fetal (E18.5) derivado de madres expuestas al humo o de madres no tratadas/control.
+
+## 3.1. Directorios y opciones de trabajo
+
+Para facilitar nuestro estudio trabajaremos en el directorio ("C:/Users/Natalia/Master/Datos_omicos_2/PEC1") que asignaremos a la variable workingDir. Copiaremos los datos en un subdirectorio del anterior denominado data, que se almacenará en la variable dataDir y los resultados los guardaremos en un directorio “results” que asignaremos a la variable resultsDir.
+
+```{r}
+setwd("C:/Users/Natalia/Master/Datos_omicos_2/PEC1")
+workingDir <-getwd()
+dir.create("data")
+dir.create("results")
+dataDir <-file.path(workingDir, "data")
+resultsDir <- file.path(workingDir, "results")
+setwd(workingDir)
+options(width=80)
+options(digits=5)
+```
+
+## 3.2. Preparación de los datos para el Análisis
+
+Para poder comenzar con el análisis de nuestros datos se requieren dos tipos de archivos: 
+
+* .CEL que obtendremos de la página donde hemos seleccionado el estudio. En nuestro caso el experimento elegido contiene 21 muestras .CEL comprimidas que podemos descargar en la base de datos de **[GEO](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE67883)**
+
+* Creación de un archivo csv denominado "targets" que contiene la información sobre los grupos y las covariables. La creación de este archivo se realiza mediante la información obtenida del estudio, ayudándonos de los datos analizados en **[GEO2R](https://www.ncbi.nlm.nih.gov/geo/geo2r/?acc=GSE67883)**. Mi archivo targets ha quedado como sigue:
+
+```{r ReadTargets}
+targets <- read.csv2("./data/targets.csv", header = TRUE, sep = ";") 
+knitr::kable(
+  targets, booktabs = TRUE,
+  caption = 'Content of the targets file used for the current analysis')
+```
+
+Tanto los archivos CEL como targets deben encontrarse en el mismo directorio de trabajo, es decir en el subdirectorio data que hemos comentado en el apartado de directorios.
+
+## 3.3.  Lectura Archivos CEL
+
+Para poder leer los archivos .CEL se requiere el uso de la libería oligo de Bioconductor y almacenaremos los datos CEL en una variable que llamaremos rawData:
+
+```{r ReadCELfiles, message=FALSE, results='hide', warning=FALSE}
+library(oligo)
+celFiles <- list.celfiles("./data", full.names = TRUE)
+library(Biobase)
+my.targets <-read.AnnotatedDataFrame(file.path("./data","targets.csv"), 
+                                     header = TRUE, row.names = 1, 
+                                     sep=";") 
+rawData <- read.celfiles(celFiles, phenoData = my.targets)
+```
+
+Tras la lectura, procederemos a asociar la información almacenada en los archivos CEL con el archivo targets:
+
+```{r ChangeName}
+my.targets@data$ShortName->rownames(pData(rawData))
+colnames(rawData) <-rownames(pData(rawData)) 
+
+head(rawData)
+```
+
+```{r}
+print(pData(rawData))
+```
+
+# 4. Preprocesado: Exploración, Control de Calidad y Normalización
+
+El preprocesado de los datos comprende diferentes fases:
+
+* Realización de algunos gráficos con los datos en crudo para hacerse una idea del experimento.
+* Realizar un control de calidad
+* Normalizar y resumir las expresiones
+* Filtrado para eliminar aquellos genes que hemos detectado en las fases anteriores que no se expresan o se expresan de diferente manera que el resto de los grupos.
+
+## 4.1. Exploración y Visualización
+
+Para llevar a cabo una primera exploración de la distribución de las señales de los datos originales sin normalizar emplearemos un **histograma**. Además, nos permitirá hacernos una idea de si la distribución de los arrays son similares en forma y posición.
+
+```{r}
+col = c(rep("red", 3), rep("blue", 3), rep("green", 3), rep("yellow", 3))
+grupos <- pData(rawData)$Grupo
+Sexo <- pData(rawData)$Sexo 
+numMuestras <- nrow(pData(rawData))
+NombreMuestras <- paste( pData(rawData)$ShortName, Sexo, sep=".")
+```
+
+```{r , message=FALSE, fig.cap="Histograma para para conocer la distribución de los arrays (Raw Data)"}
+hist(rawData, cex.axis=0.5, las=2, which="all",
+col = c(rep("red", 3), rep("blue", 3), rep("green", 3),
+rep("yellow", 3)),
+main="Distribucion Arrays")
+legend (x="topright", legend=NombreMuestras , col=col, lty=1:numMuestras)
+```
+
+Atendiendo al histograma podemos decir que la distribución de los arrays es bastante similar en forma y posición y, por lo tanto esto nos sugiere que no parece existir problema con los datos.
+
+## 4.2. Control de Calidad de los datos
+
+Mediante el paquete ArrayQualityMetrics se realizan diferentes enfoques de calidad, como diagrama de caja de la intensidad de los datos y Análisis de componentes principales (PCA)... 
+
+```{r QCRaw, message=FALSE, warning=FALSE, eval=FALSE}
+library(arrayQualityMetrics)
+arrayQualityMetrics(rawData, outdir = "./results/rawData_quality", force = T)
+```
+ 
+En la carpeta rawData_quality se generan una serie de archivos, entre los cuales existe uno denominado index que abre una página web desde donde podremos acceder a un resumen del análisis realizado.
+
+Otra forma de poder visualizar los datos es a través de los **diagramas de caja** basados en los distintos cuantiles de los valores– que nos pueden dar una idea de la distribución de las intensidades.
+
+```{r BoxplotRaw, message=FALSE, fig.cap="Boxplot para intensidades de de los arrays (Raw Data)"}
+boxplot(rawData, cex.axis=0.5, las=2,  which="all", 
+         col = c(rep("red", 3), rep("blue", 3), rep("green", 3), rep("yellow", 3)),
+         main="Distribution of raw intensity values")
+```
+
+Las distribuciones de los datos son bastante parecidas por lo que sugiere que es conveniente normalizar pero no se aprecian arrays problemáticos, salvo el F445 que parece salirse de la distribución del resto de arrays.
+
+También podemos realizar un análisis visual y detallado empleando las funciones ggplot que reforzarán lo conseguido con los análisis anteriores.
+
+```{r}
+library(ggplot2)
+library(ggrepel)
+plotPCA3 <- function (datos, labels, factor, title, scale,colores, size = 1.5, glineas = 0.25) {
+  data <- prcomp(t(datos),scale=scale)
+  # ajustes de la gráfica
+  dataDf <- data.frame(data$x)
+  Group <- factor
+  loads <- round(data$sdev^2/sum(data$sdev^2)*100,1)
+  # gráfica principal 
+  p1 <- ggplot(dataDf,aes(x=PC1, y=PC2)) +
+    theme_classic() +
+    geom_hline(yintercept = 0, color = "gray70") +
+    geom_vline(xintercept = 0, color = "gray70") +
+    geom_point(aes(color = Group), alpha = 0.55, size = 3) +
+    coord_cartesian(xlim = c(min(data$x[,1])-5,max(data$x[,1])+5)) +
+    scale_fill_discrete(name = "Grupo")
+  # evitar superposición etiquetas
+  p1 + geom_text_repel(aes(y = PC2 + 0.25, label = labels),segment.size = 0.25, size = size) + 
+    labs(x = c(paste("PC1",loads[1],"%")),y=c(paste("PC2",loads[2],"%"))) +  
+    ggtitle(paste("Análisis de Componentes Principales: ",title,sep=" "))+ 
+    theme(plot.title = element_text(hjust = 0.5)) +
+    scale_color_manual(values=colores)
+  }
+```
+
+El **gráfico de componentes principales** nos muestra la varianza en los datos representando el porcentaje explicado para cada componente, en los cuales tenemos una medida de la importancia de los grupos que se puedan visualizar. Si la suma de los porecentajes es alta, por ejemplo superior al 50% las conclusiones obtenidas seran mas fiables que con valores bajos, por ejemplo inferiores al 30% de varianza explicada.
+
+```{r PCARaw, message=FALSE, fig.cap="Visualizacion de los dos primeros componentes de raw data"}
+plotPCA3(exprs(rawData), labels = targets$ShortName, factor = targets$Grupo, 
+         title="Raw data", scale = FALSE, size = 3, 
+         colores = c("red", "blue", "green", "yellow"))
+```
+
+Tal y como podemos observar en la gráfica, el primer componente de la PCA representa el 35.9% de la variabilidad total de las muestras y el segundo componente un 29,1%. El porcentaje de variabilidad explicado por las dos primeras componentes nos indica que no son muy explicativas.
+
+Además, este gráfico servir para detectar si las muestras se agrupan de forma “natural”, es decir, con otras muestras provenientes del mismo grupo o si no hay correspondencia clara entre grupos experimentales En nuestro caso de estudio se observa que los datos aparecen separados.
+
+Para completar los resultados obtenidos mediante la gráfica de Componentes principales podemos emplear un cluster jerárquico seguido de un **dendograma** que nos puede ayudar a hacernos una idea de si las muestras se agrupan por condiciones experimentales
+
+```{r , message=FALSE, fig.cap="Mapa de Calor para visualizar la agrupación por condiciones experimentales de raw data"}
+Distancia <- dist(t(exprs(rawData)))
+heatmap (as.matrix(Distancia),  col=heat.colors(16))
+```
+
+```{r, message=FALSE, fig.cap="Dendograma para visualizar la agrupación por condiciones experimentales de raw data"}
+Distancia <- dist(t(exprs(rawData)))
+den <- hclust (Distancia, "average")
+plot (den)
+```
+
+En el dendograma se detectan dos muestras de un macho y una hembra (M121 Y F445) que son susceptibles a no cumplir el control de calidad.
+
+## 4.3. Normalización del Dato
+
+Con el proceso de normalización vamos intentar que las matrices sean comparables entre ellas y tratar de reducir o eliminar la variabilidad en las muestras que no se deba a razones biológicas. Realizare el procesado mediante RMA mediante el cual se llevarán a cabo los siguientes pasos:
+
+- Corrección de fondo
+- Normalización para hacer los valores de los arrays comparables
+- Resumen de las diversas sondas asociadas a cada grupo de sondas para dar un único valor.
+
+```{r Normalization}
+eset_rma <- rma(rawData)
+```
+
+## 4.4. Control de Calidad de los Datos Normalizados
+
+Realizaremos de nuevo un control de Calidad de estos Datos Normalizados tal y como lo hemos realizado anteriormente. Volveremos a generar un diagrama de cajas para estudiar la distribución de las intensidades tras la normalización.
+
+```{r BoxplotNorm, message=FALSE, fig.cap="Distribución de las intensidades de los datos normalizados"}
+boxplot(eset_rma, cex.axis=0.5, las=2,  which="all", 
+         col = c(rep("red", 3), rep("blue", 3), rep("green", 3), rep("yellow", 3)),
+         main="Boxplot de intensidades de los Arrays: Datos Normalizados")
+```
+
+Después de normalizar se observa como los valores se encuentran en una escala comparable y se descarta la ausencia de Microarrays problemáticos.
+
+Ejecutamos de nuevo el paquete *ArrayQualityMetrics* y guardaremos el resultado en una nueva carpeta QCDir.Norm donde podremos acceder a un nuevo archivo index.htlm que contiene el resumen del análisis realizado.
+
+```{r QCNorm, message=FALSE, warning=FALSE, eval=FALSE}
+arrayQualityMetrics(eset_rma, outdir = file.path("./results", "QCDir.Norm"), force=TRUE)
+```
+
+Igual que en el apartado anterior, generamos un gráfico de componentes principales.
+
+```{r PCANorm, message=FALSE, fig.cap="Visualización de los dos componentes principales para Datos Normalizados"}
+plotPCA3(exprs(eset_rma), labels = targets$ShortName, factor = targets$Grupo, 
+         title="Datos Normalizados", scale = FALSE, size = 3, 
+         colores = c("red", "blue", "green", "yellow"))
+```
+
+Tras la normalización, el primer componente de la PCA representa el 7,8% de la variabilidad total de las muestras y el segundo componente un 7,4%. Se ha producido una disminución en el porcentaje de la variabilidad explicada con respecto a la PCA realizada en datos sin procesar.
+
+## 4.5. Detectando una mayor variabilidad de genes
+
+La selección de genes expresados diferencialmente se ve afectada por la cantidad de genes sobre los que hacemos el estudio. Cuanto mayor sea el número, mayor será el ajuste necesario del p-valor, lo que nos llevará a eliminar más genes.
+
+Si un gen se expresa de manera diferencial, se espera que haya una cierta diferencia entre los grupos y, por lo tanto, la varianza general del gen será mayor que la de aquellos que no tienen expresión diferencial.
+
+Trazar la variabilidad general de todos los genes, en nuestro caso de los *41.345 genes*, es útil para decidir qué porcentaje de genes muestra una variabilidad que puede atribuirse a otras causas que no sean la variación aleatoria.
+
+```{r}
+numero_genes <- nrow(eset_rma)
+numero_genes
+```
+
+```{r SDplot, fig.cap="Valores de las desviaciones estándar que abarcan todas las muestras de los genes ordenados de menor a mayor"}
+sds <- apply (exprs(eset_rma), 1, sd)
+sdsO<- sort(sds)
+plot(1:length(sdsO), sdsO, main="Distribución de variabilidad para todos los genes",
+     sub="La lineas verticales representan los percentiles 90% y 95%",
+     xlab="Índice de genes (de menor a mayor variabilidad)", ylab="Desviación Estándar")
+abline(v=length(sds)*c(0.9,0.95))
+```
+
+El gráfico representa las desviaciones estándar de todos los genes ordenados de menor a mayor valor, donde se muestra que los genes más variables son aquellos con una desviación estándar superior al 90-95% de todas las desviaciones estándar.
+ 
+## 4.5. Filtraje
+
+Mediante el filtraje eliminaremos los genes que apenas varían entre
+condiciones o que deseamos quitar. Para ello, emplearemos el paquete nsFilter localizando el paquete de **[anotaciones](http://www.bioconductor.org/packages/release/data/annotation/)** correspondiente.
+
+En el caso del estudio que nos compete corresponde a Affymetrix mogene21 annotation data (chip mogene21sttranscriptcluster).
+
+```{r Filtering1, results='hide', message=FALSE}
+library(genefilter)
+library(mogene21sttranscriptcluster.db)
+annotation(eset_rma) <- "mogene21sttranscriptcluster.db"
+filtered <- nsFilter(eset_rma, 
+                     require.entrez = TRUE, remove.dupEntrez = TRUE,
+                     var.filter=TRUE, var.func=IQR, var.cutoff=0.75, 
+                     filterByQuantile=TRUE, feature.exclude = "^AFFX")
+```
+
+Podemos obtener los valores filtrados y un informe de los resultados del filtrado de la siguiente manera:
+
+```{r FilterResults1, results='hide', echo=FALSE}
+names(filtered)
+class(filtered$eset)
+```
+
+```{r FilterResults2}
+print(filtered$filter.log)
+eset_filtered <-filtered$eset
+```
+
+```{r}
+num <- nrow(eset_filtered)
+num
+```
+
+Después del filtraje nos quedan *5.991 genes* disponibles para analizar.
+
+## 4.6. Guardado de los Datos Normalizados y Filtrados:
+
+Guardamos los datos filtrados normalizados en un archivo excel por si requerimos usarlos posteriormente.
+
+```{r SaveData1, results='hide', message=FALSE}
+write.csv(exprs(eset_rma), file="./results/normalized.Data.csv")
+write.csv(exprs(eset_filtered), file="./results/normalized.Filtered.Data.csv")
+save(eset_rma, eset_filtered, file="./results/normalized.Data.Rda")
+```
+
+# 5. Selección de Genes Diferencialmente Expresados
+
+La selección de genes expresados diferencialmente consiste en hacer algún tipo de prueba, generalmente en términos de genes, para comparar la expresión de genes entre grupos.
+
+En este ejemplo se aplicará la aproximación presentada por Smyth basada
+en la utilización del modelo lineal general, combinada con un método para
+obtener una estimación mejorada de la varianza.
+
+## 5.1. Análisis Basado en modelos lineales
+
+### 5.1.1. Matriz de Diseño
+
+El primer paso para el análisis basado en modelos lineales es crear la __matriz de diseño__. Básicamente es una tabla que describe la asignación de cada muestra a un grupo o condición experimental. Tiene tantas filas como muestras y tantas columnas como grupos (si solo se considera un factor).
+Cada fila contiene un 1 en la columna del grupo al que pertenece la muestra y un 0 en los demás.
+
+```{r LoadSavedData}
+if (!exists("eset_filtered")) load (file="./results/normalized.Data.Rda")
+```
+
+```{r DesignMatrix, message=FALSE}
+library(limma)
+designMat<- model.matrix(~0+Grupo, pData(eset_filtered))
+colnames(designMat) <- c("Control_Female", "Control_Male", "Smoke_Female", "Smoke_Male")
+print(designMat)
+```
+
+### 5.1.2. Matriz de Contraste
+
+La matriz de contrastes se usa para describir las comparaciones entre grupos.
+Consiste en tantas columnas como comparaciones y tantas filas como
+grupos.
+Una comparación entre grupos, llamada "contraste", está representada por un "1" y un "-1" en las filas de grupos para comparar y ceros en el resto.
+
+Nuestra __Matriz de Contraste__ comparará: 
+
+- el efecto de exponer a una madre embarazada al humo de tabaco vs una madre sin dicha exposicion que tendrá descendientes machos.
+
+              "Control_Male” vs “Smoke_Male”
+
+- el efecto de exponer a una madre embarazada al humo de tabaco vs una madre sin dicha exposicion que tendrá descendientes hembras.
+
+              "Control_Female” vs “Smoke_Female”
+
+- el efecto de exponer a una madre embarazada al humo de tabaco vs una madre sin dicha exposicion independientemente del sexo de su descendencia.
+
+              "Control" vs "Smoke"
+
+```{r setContrasts}
+cont.matrix <- makeContrasts (CM_SM = Control_Male - Smoke_Male,
+                              CF_SF = Control_Female - Smoke_Female,
+                              Int = (Control_Male - Control_Female) - (Smoke_Female - Smoke_Male),
+                              levels=designMat)
+print(cont.matrix)
+```
+
+## 5.2. Estimación del Modelo y Seleccion de Genes
+
+Una vez definida la matriz de diseño y los contrastes, podemos pasar a estimar el modelo, los contrastes y realizar las pruebas de significación
+que nos indiquen, para cada gen y cada comparación, si puede considerarse
+diferencialmente expresado.
+
+El método implementado en *limma* amplía el análisis tradicional utilizando
+modelos de Bayes empíricos para combinar la información de toda la matriz
+de datos y de cada gen individual y obtener estimaciones de error mejoradas.
+El análisis proporciona los estadísticos de test habituales como Fold-change t-moderados o p-valores ajustados, que se utilizan para ordenar los genes de más
+a menos diferencialmente expresados.
+
+A fin de controlar el porcentaje de falsos positivos que puedan resultar del
+alto número de contrastes realizados simultáneamente, los p-valores se ajustan
+de forma que tengamos control sobre la tasa de falsos positivos utilizando el
+método de Benjamini y Hochberg.
+
+La función *topTable* genera para cada contraste una lista de genes ordenados
+de más a menos diferencialmente expresados.
+
+```{r, linearmodelfit}
+library(limma)
+fit<-lmFit(eset_filtered, designMat)
+fit.main<-contrasts.fit(fit, cont.matrix)
+fit.main<-eBayes(fit.main)
+class(fit.main)
+```
+
+## 5.3. Obtención de la lista de Genes Expresados Diferencialmente
+
+El paquete `limma` implementa la función` topTable` que contiene, para un contraste dado, una lista de genes ordenados desde el p-valor más pequeño al más grande que se puede considerar como más o menos expresado diferencialmente.
+
+- Para la comparación 1 (Control_Male vs Smoke_Male): Genes que cambian su expresión por el efecto de exponer a una madre embarazada al humo de tabaco vs una madre sin dicha exposicion con descendientes machos.
+
+```{r}
+topTab_CM_SM <- topTable (fit.main, number=nrow(fit.main), coef="CM_SM", adjust="fdr") 
+head(topTab_CM_SM)
+```
+
+- Para la comparación 2 (Control_Female vs Smoke_Female): Genes que cambian su expresión por el efecto de exponer a una madre embarazada al humo de tabaco vs una madre sin dicha exposicion con descendientes hembras.
+
+```{r}
+topTab_CF_SF <- topTable (fit.main, number=nrow(fit.main), coef="CF_SF", adjust="fdr") 
+head(topTab_CF_SF)
+```
+
+- Para la comparación 3 (Control vs Smoke): Genes que cambian su expresión por el efecto de exponer a una madre embarazada al humo de tabaco vs una madre sin dicha exposicion independientemente de su descendencia.
+
+```{r}
+topTab_Int <- topTable (fit.main, number=nrow(fit.main), coef="Int", adjust="fdr") 
+head(topTab_Int)
+```
+
+La primera columna de cada tabla superior contiene la identificación del fabricante (Affymetrix) para cada conjunto de sondas. Mediante el proceso denominado **anotación** se puede generar la correspondencia de cada gen a cada ID de Affymetrix.
+
+## 5.4. Visualización de Genes Significativamente Diferenciados
+
+Una forma de visualizar los resultados es mediante un **volcano plot**, que
+representa en abscisas los cambios de expresión en escala logarítmica ("efecto biológico"), y en ordenadas el “menos logaritmo” del p-valor o alternativamente el estadístico.
+
+```{r, fig.cap="Volcano Plot que nos permite visualizar los genes expresados diferencialmente entre las madres control y las madres expuestas al humo del tabaco con descendencia masculina"}
+volcanoplot(fit.main, coef="CM_SM", style = "B-statistic", highlight=10, 
+            main=paste("Genes Expresados Diferencialmente", colnames(cont.matrix)[1], sep="\n"))
+  abline(v=c(-1,1))
+```
+
+```{r, fig.cap="Volcano Plot que nos permite visualizar los genes expresados diferencialmente entre las madres control y las madres expuestas al humo del tabaco con descendencia femenina"}
+volcanoplot(fit.main, coef="CF_SF", style = "B-statistic", highlight=10, 
+            main=paste("Genes Expresados Diferencialmente", colnames(cont.matrix)[2], sep="\n"))
+  abline(v=c(-1,1))
+```
+
+
+```{r, fig.cap="Volcano Plot que nos permite visualizar los genes expresados diferencialmente entre las madres control y las madres expuestas al humo del tabaco independientemente de su descendencia"}
+volcanoplot(fit.main, coef="Int", style = "B-statistic", highlight=10,
+            main=paste("Genes Expresados Diferencialmente", colnames(cont.matrix)[3], sep="\n"))
+  abline(v=c(-1,1))
+```
+
+Los genes cuyo log odds es superior a 0 y cuyo log2 fold change es, en valor absoluto, superior a 1, son candidatos a estar diferencialmente expresados.
+
+Si consideraramos genes expresados diferencialmente aquellos que tienen un
+p-valor ajustado inferior a 0.05 o 0.01, el numero de genes diferencialmente
+expresado en cada caso seria:
+
+```{r echo=FALSE}
+cat("Numero de genes con un p-valor inferior a 0.05:\n")
+  cat ("Control_Macho vs Smoke_Macho:",sum(topTab_CM_SM$adj.P.Val<=0.05),"\n")
+  cat ("Control_Hembra vs Smoke_Hembra: ", sum(topTab_CF_SF$adj.P.Val<=0.05),"\n")
+  cat ("Control vs Smoke: ", sum(topTab_Int$adj.P.Val<=0.05),"\n")  
+
+cat("\nNumero de genes con un p-valor inferior a 0.01:\n")
+  cat ("Control_Macho vs Smoke_Macho: ", sum(topTab_CM_SM$adj.P.Val<=0.01),"\n")
+  cat ("Control_Hembra vs Smoke_Hembra: ", sum(topTab_CF_SF$adj.P.Val<=0.01),"\n")
+  cat ("Control vs Smoke: ", sum(topTab_Int$adj.P.Val<=0.01),"\n")  
+
+```
+
+Por lo que vemos que solo se aprecían genes diferencialmente expresados en la comparativa entre los organismos control y los organismos expuestos al humo de tabaco independientemente de su descendencia. Los 8 genes más expresados en esta comparativa son los siguientes:
+
+```{r}
+Int <- head(topTab_Int[1:8,1:6])
+show(Int)
+```
+
+## 5.5. Comparaciones Multiples
+
+Cuando se realizan varias comparaciones a la vez puede resultar importante
+ver qué genes cambian simultáneamente en más de una comparación. La función *decidetests* permite seleccionarán los genes que cambian en una o más condiciones.
+
+El resultado del análisis es una tabla, que llamaremos res y que para cada
+gen y cada comparación contiene un 1 (si el gen esta sobreexpresado o up en
+esta condición), un 0 (si no hay cambio significativo) o un -1 (si esta down
+regulado). 
+
+Para resumir dicho análisis podemos contar qué filas tienen como mínimo
+una celda distinta de cero:
+
+```{r decideTests.1}
+library(limma)
+res<-decideTests(fit.main, method="separate", adjust.method="fdr", p.value=0.05, lfc=1)
+```
+
+```{r resumeDecideTests}
+sum.res.rows<-apply(abs(res),1,sum)
+res.selected<-res[sum.res.rows!=0,] 
+print(summary(res))
+```
+
+El **diagrama de Venn** permite visualizar cuántos de estos genes son compartidos por una o más selecciones sin diferenciar entre genes up o down regulados.
+
+```{r, vennDiagram, fig.cap="Diagrama de Venn que muestra los genes en común entre las tres comparaciones realizadas"}
+vennDiagram (res.selected[,1:3], cex=0.9)
+title("Genes en común entre las tres comparaciones \n Genes seleccionados con FDR <0.1 y logFC> 1")
+```
+
+Mediante la tabla anterior podemos deducir que la diferenciación de genes se establece entre organismos expuestos al humo de tabaco vs los organismos denominados control independientemente del sexo de su descendencia.
+
+## 5.6. Anotación de Genes
+
+En el proceso de *"anotación"* buscaremos información para asociar los identificadores que aparecen en las tablas superiores, generalmente correspondientes a sondas o transcripciones que dependen del tipo de matriz, con nombres más familiares como el Símbolo del gen, el Identificador del gen Entrez o la descripción del gen.
+
+Por simplicidad, como disponemos de tres tablas, se prepara y utiliza una función que anota una tabla superior con un paquete dado.
+
+```{r}
+require(mogene21sttranscriptcluster.db)
+```
+
+```{r GeneAnnotation, message=FALSE, warning=FALSE}
+annotatedTopTable <- function(topTab, anotPackage)
+{
+  topTab <- cbind(PROBEID=rownames(topTab), topTab)
+  myProbes <- rownames(topTab)
+  thePackage <- eval(parse(text = anotPackage))
+  geneAnots <- select(thePackage, myProbes, c("SYMBOL", "ENTREZID", "GENENAME"))
+  annotatedTopTab<- merge(x=geneAnots, y=topTab, by.x="PROBEID", by.y="PROBEID")
+return(annotatedTopTab)
+}
+```
+
+```{r annotateTopTables}
+topAnnotated_CM_SM <- annotatedTopTable(topTab_CM_SM,
+anotPackage="mogene21sttranscriptcluster.db")
+topAnnotated_CF_SF <- annotatedTopTable(topTab_CF_SF,
+anotPackage="mogene21sttranscriptcluster.db")
+topAnnotated_Int <- annotatedTopTable(topTab_Int,
+anotPackage="mogene21sttranscriptcluster.db")
+write.csv(topAnnotated_CM_SM, file="./results/topAnnotated_CM_SM.csv")
+write.csv(topAnnotated_CF_SF, file="./results/topAnnotated_CF_SF.csv")
+write.csv(topAnnotated_Int, file="./results/topAnnotated_Int.csv")
+```
+
+La anotación hace que las tablas sean más comprensibles. La tabla generada muestra las anotaciones agregadas a los resultados "topTable" para la comparación "Int" (solo se muestran las primeras cuatro columnas).
+
+```{r annotatedTop, echo=FALSE}
+short<- head(topAnnotated_Int[1:5,1:4])
+# Anotaciones agregadas a los resultados "topTable" para la comparación "Int"
+print(short)
+```
+
+Para disponer de una información más completa que la obtenida en la tabla anterior, podemos emplear el paquete de Bioconductor *annaffy* que genera una tabla de anotaciones con enlaces a las Bases de Datos para cada anotación seleccionada. 
+
+```{r}
+require(annaffy)
+genesSelected <- rownames(res.selected)
+at <- aafTableAnn(genesSelected, "mogene21sttranscriptcluster.db")
+saveHTML (at, file.path(resultsDir, "anotations.html"), "Anotaciones para Genes Seleccionados")
+```
+
+## 5.7. Visualizacion de Genes Expresados Diferencialmente
+
+Tras la generación de la tabla de asociación, volvemos a generar el *volcano plot*, solo para la comparativa de los individuos Control vs los individuos expuestos al Humo independiente del sexo de su descendencia, para observar aquellos genes expresados diferencialmente ya identificados mediante el proceso de Anotación.
+
+```{r}
+library(mogene21sttranscriptcluster.db)
+geneSymbols <- select(mogene21sttranscriptcluster.db, rownames(fit.main), c("SYMBOL"))
+SYMBOLS<- geneSymbols$SYMBOL
+```
+
+```{r, fig.cap="Volcano plot para la comparación entre Control y Smoke independientemente de su descendencia donde solo se muestran los nombres de los 8 genes principales de la tabla superior"}
+volcanoplot(fit.main, coef="Int", highlight=8, names=SYMBOLS, 
+            main=paste("Genes Expresados Diferencialmente", colnames(cont.matrix)[3], sep="\n"))
+  abline(v=c(-1,1))
+```
+
+## 5.8. Mapas de Calor
+
+Los genes que han sido seleccionados como diferencialmente expresados pueden visualizarse usando un mapa de calor. Estas gráficas usan paletas de colores para resaltar valores distintos: expresiones significativamente diferenciales positivas (regulación ascendente) o negativas (regulación descendente).
+
+Los **mapas de calor** se pueden usar para visualizar los valores de expresión de genes expresados diferencialmente sin un orden específico, pero generalmente se prefiere trazarlos haciendo un agrupamiento jerárquico en genes (filas) o columnas (muestras) para encontrar grupos de genes con patrones comunes de variación que eventualmente puede asociarse a los diferentes grupos que se comparan.
+
+Puede haber una discusión sobre qué genes seleccionar para hacer un mapa de calor. Una opción común es seleccionar los genes que se han seleccionado en los pasos anteriores, es decir, los genes que se han denominado diferencialmente expresados en al menos una comparación.
+
+```{r data4Heatmap}
+probesInHeatmap <- rownames(res.selected)
+HMdata <- exprs(eset_filtered)[rownames(exprs(eset_filtered)) %in% probesInHeatmap,]
+
+geneSymbols <- select(mogene21sttranscriptcluster.db, rownames(HMdata), c("SYMBOL"))
+SYMBOLS<- geneSymbols$SYMBOL
+rownames(HMdata) <- SYMBOLS
+write.csv(HMdata, file = file.path("./results/data4Heatmap.csv"))
+```
+
+Con los datos seleccionados se puede generar un mapa de calor con o sin agrupamiento de genes y / o muestras.
+
+- El mapa de calor producido para todos los genes seleccionados con los mismos criterios descritos anteriormente (FDR <0.1 y logFC> 1) donde no se realiza la agrupación de genes y muestras.
+
+```{r heatmapNoclustering, fig.cap="Mapa de Calor para datos de expresión sin ninguna agrupación"}
+color.map <- function(grupo) { 
+  if (grupo=="A"){
+    c<- "yellow" 
+  }else{ 
+    if (grupo=="B"){
+      c<- "red"
+    }else{
+      c<- "blue"
+   }
+  }
+return(c)}
+grupColors <- unlist(lapply(pData(eset_filtered)$Grupo, color.map))
+library(gplots)
+heatmap.2(HMdata,
+          Rowv = FALSE,
+          Colv = FALSE,
+          main = "Genes Diferencialmente Expresados \n FDR < 0,1, logFC >=1",
+          scale = "row",
+          col = bluered(75),
+          sepcolor = "white",
+          sepwidth = c(0.05,0.05),
+          cexRow = 0.5,
+          cexCol = 0.9,
+          key = TRUE,
+          keysize = 1.5,
+          density.info = "histogram",
+          ColSideColors = grupColors,
+          tracecol = NULL,
+          dendrogram = "none",
+          srtCol = 30)
+```
+
+- El mapa de calor producido para todos los genes seleccionados con los mismos criterios descritos anteriormente (FDR <0.1 y logFC> 1) donde los genes y las muestras se ven obligados a agruparse por fila y columna de forma similar.
+
+```{r heatmapClustering, fig.cap="Mapa de calor que agrupa genes (filas) y muestras (columnas) por su similitud"}
+heatmap.2(HMdata,
+          Rowv = TRUE,
+          Colv = TRUE,
+          dendrogram = "both",
+          main = "Differentially expressed genes \n FDR < 0,1, logFC >=1",
+          scale = "row",
+          col = bluered(75),
+          sepcolor = "white",
+          sepwidth = c(0.05,0.05),
+          cexRow = 0.5,
+          cexCol = 0.9,
+          key = TRUE,
+          keysize = 1.5,
+          density.info = "histogram",
+          ColSideColors = grupColors,
+          tracecol = NULL,
+          srtCol = 30)
+
+```
+
+Como puede verse aquellos que presentan una descendencia de machos tienen perfiles de expresión mas parecidos entre ellos, mientras que los que presentan descendencia de hembra presentan más parecidos entre ellos.
+
+# 6. Análisis de la Significación Biólogica
+
+El Análisis de Significación Biológica busca establecer si, dada una lista de genes seleccionados por ser diferencial expresada entre dos condiciones, las funciones, procesos biológicos o vías moleculares que los caracterizan aparecen en esta lista con más frecuencia que entre el resto de los genes analizados.
+
+En este estudio usaremos el análisis de enriquecimiento básico mediante el paquete de bioconductores *`ReactomePA`*. El análisis se realiza en la base de datos de anotaciones **[ReactomePA](https://reactome.org/)**.
+
+Los análisis de este tipo necesitan un número mínimo de genes para ser confiables, preferiblemente unos pocos cientos, por lo que es común realizar una selección menos restrictiva que con los pasos anteriores.
+
+Por ejemplo, una opción es incluir todos los genes con un límite de FDR no estricto, como FDR <0.15 sin filtrado o emplear p-valores sin ajustar.
+
+```{r}
+listOfTables <- list(CM_SM = topTab_CM_SM,
+                     CF_SF = topTab_CF_SF,
+                     INT = topTab_Int)
+listOfSelected <- list()
+for (i in 1:length(listOfTables)){
+  # generaremos toptable
+  topTab <- listOfTables[[i]]
+  # selección de genes para incluir en el análisis
+  whichGenes<-topTab["adj.P.Val"]<0.15
+  selectedIDs <- rownames(topTab)[whichGenes]
+  # convertimos el ID en identificador de Entrez
+  EntrezIDs<- select(mogene21sttranscriptcluster.db, selectedIDs, c("ENTREZID"))
+  EntrezIDs <- EntrezIDs$ENTREZID
+  listOfSelected[[i]] <- EntrezIDs
+  names(listOfSelected)[i] <- names(listOfTables)[i]
+}
+sapply(listOfSelected, length)
+```
+
+Lamentablemente, en el estudio que he seleccionado no existen genes expresados diferencialmente en 2 de las 3 comparaciones establecidas si tomamos los valores del p-valor ajustado. Solo disponemos de 8 genes expresados diferencialmente de la comparación Int, y este tipo de análisis solo trabaja bien con varios centenares de genes. 
+
+Por lo que en el caso de mi estudio no tiene mucho sentido realizar un Análisis de Significación Biológica teniendo en cuenta este aspecto. Por este motivo, basaré mi esrudio en los p-valores sin ajustar. 
+
+Como primer paso, preparamos la lista de listas de genes que se analizarán:
+
+```{r}
+listOfTables <- list(CM_SM = topTab_CM_SM,
+                     CF_SF = topTab_CF_SF,
+                     INT = topTab_Int)
+listOfSelected <- list()
+for (i in 1:length(listOfTables)){
+  # Crearemos el toptab
+  topTab <- listOfTables[[i]]
+  # seleccionaremos los genes a incluir en el análisis teniendo en cuenta el p-valor sin ajustar
+  whichGenes<-topTab["P.Value"]<0.15
+  selectedIDs <- rownames(topTab)[whichGenes]
+  # convertimos el ID en identificador de Entrez
+  EntrezIDs<- select(mogene21sttranscriptcluster.db, selectedIDs, c("ENTREZID"))
+  EntrezIDs <- EntrezIDs$ENTREZID
+  listOfSelected[[i]] <- EntrezIDs
+  names(listOfSelected)[i] <- names(listOfTables)[i]
+}
+sapply(listOfSelected, length)
+```
+
+```{r}
+mapped_genes2GO <- mappedkeys(org.Mm.egGO)
+mapped_genes2KEGG <- mappedkeys(org.Mm.egPATH)
+mapped_genes <- union(mapped_genes2GO , mapped_genes2KEGG)
+```
+
+El análisis de significación biológica se aplicará solo a las dos primeras listas de las cuales podemos comparar la exposición al humo del tabaco en madres embarazadas vs organismos control dependiendo del sexo de su descendencia.
+
+```{r BiologicalSig}
+library(ReactomePA)
+
+listOfData <- listOfSelected[1:2]
+comparisonsNames <- names(listOfData)
+universe <- mapped_genes
+
+for (i in 1:length(listOfData)){
+  genesIn <- listOfData[[i]]
+  comparison <- comparisonsNames[i]
+  enrich.result <- enrichPathway(gene = genesIn,
+                                 pvalueCutoff = 0.05,
+                                 readable = T,
+                                 pAdjustMethod = "BH",
+                                 organism = "mouse",
+                                 universe = universe)
+  
+  cat("##################################")
+  cat("\nComparison: ", comparison,"\n")
+  print(head(enrich.result))
+
+  if (length(rownames(enrich.result@result)) != 0) {
+  write.csv(as.data.frame(enrich.result), 
+             file =paste0("./results/","ReactomePA.Results.",comparison,".csv"), 
+             row.names = FALSE)
+  
+  pdf(file=paste0("./results/","ReactomePABarplot.",comparison,".pdf"))
+    print(barplot(enrich.result, showCategory = 15, font.size = 4, 
+            title = paste0("Reactome Pathway Analysis for ", comparison,". Barplot")))
+  dev.off()
+  
+  pdf(file = paste0("./results/","ReactomePAcnetplot.",comparison,".pdf"))
+    print(cnetplot(enrich.result, categorySize = "geneNum", schowCategory = 15, 
+         vertex.label.cex = 0.75))
+  dev.off()
+  }
+}
+```
+
+Los resultados obtenidos en el análisis de importancia biológica son:
+
+- un _archivo .csv_ con un resumen de todas las rutas enriquecidas y las estadísticas asociadas.
+- _un diagrama de barras_ con las mejores vías enriquecidas. La altura del gráfico de barras es el número de genes de nuestro análisis relacionados con esa vía. Además, las vías están ordenadas por significación estadística.
+- una trama con una _red de las vías enriquecidas_ y la relación entre los genes incluidos.
+
+```{r, fig.cap="Red obtenida del análisis de enriquecimiento de Reactome en la lista obtenida de la comparación entre Control Male vs Smoke Male y Control Female vs Smoke Female"}
+cnetplot(enrich.result, categorySize = "geneNum", schowCategory = 15, vertex.label.cex = 0.75)
+```
+
+En nuestro estudio de comparación, tanto en el caso de _CM_SM_ como en _CF_SF_ se ha encontrado una vía destacable relacionada con el *Ciclo Celular Mitótico (Cell Cycle, Mitotic)* en ambos casos.
+
+```{r, echo=FALSE}
+Tab.react <- read.csv2(file.path("./results/ReactomePA.Results.CM_SM.csv"), 
+                       sep = ",", header = TRUE, row.names = 1)
+
+Tab.react <- Tab.react[1:4, 1:5]
+knitr::kable(Tab.react, booktabs = TRUE, caption = "Primeras filas y columnas para los resultados de Reactome en la Comparación CM_SM.csv")
+```
+
+```{r, echo=FALSE}
+Tab.react <- read.csv2(file.path("./results/ReactomePA.Results.CF_SF.csv"), 
+                       sep = ",", header = TRUE, row.names = 1)
+
+Tab.react <- Tab.react[1:4, 1:5]
+knitr::kable(Tab.react, booktabs = TRUE, caption = "Primeras filas y columnas para los resultados de Reactome en la Comparación CF_SF.csv")
+```
+
+# 7. Resumen de Resultados y Discusión
+
+Mediante el *preprocesado* realizado en la fase de Exploración y Control de Calidad hemos podido comprobar que, salvo en dos de las 21 muestras presentadas en el estudio donde se refleja una mínima heterogeneidad, la calidad de los datos era buena.
+
+Los *datos normalizados y filtrados* nos han permitido detectar una serie de genes diferencialmente expresados con los que hemos procedido a realizar los estudios de significacion biologica.
+
+En el estudio que he seleccionado, así como las comparaciones establecidas para el mismo, no existen genes expresados diferencialmente en 2 de las 3 comparaciones establecidas si tomamos los valores del p-valor ajustado. Solo disponemos de 8 genes expresados diferencialmente de la comparación Int. Por lo que en el caso de mi estudio, no tiene mucho sentido realizar un *Análisis de Significación Biológica* teniendo en cuenta este aspecto y por este motivo, fue necesario basar mi estudio en los p-valores sin ajustar.
+
+Tras la realización de dichos análisis, se puede llegar a la *conclusión* que no existen grandes relaciones entre el sexo de la descendencia y la exposición de la madre al humo del tabaco durante el embarazo.
+
+Los archivos generados durante el análisis han sido los siguientes:
+
+```{r listOfFiles, echo=FALSE}
+listOfFiles <- dir("./results/") 
+knitr::kable(
+  listOfFiles, booktabs = TRUE,
+  caption = 'Listado de Ficheros generados durante el Análisis',
+  col.names="Listado de Ficheros"
+)
+```
+
+## 7.1. Discusión
+
+En relación al estudio realizado podemos destacar los siguientes puntos:
+
+- El número de muestra utilizadas para el estudio es demasiado pequeña, por lo que se puede generar un mayor número de errores, más falsos negativos y problemas en la interpretación de los resultados. 
+- La comparaciones establecidas en el estudio no siguen los objetivos que se establecían en el artículo. Esto hace que el estudio no esté preparado para dar resultados eficientes ya que los datos no estaban destinados al tipo de análisis realizado.
+- Los métodos empleados se encuentran acordes a los diferentes casos que se nos han planteado en la asignatura. Probablemente existan métodos que se ajusten mucho mejor al estudio que queremos realizar y que sabremos aplicar a medida que vayamos adquiriendo conocimientos y experiencia en el Análisis de Datos Ómicos.
+
+# 8. Bibliografía
+
+- Obtención de los datos en la Base de Datos “Gene Expression Omnibus (GEO)”: (https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE67883) 
+- Artículo completo de Dehmel para el estudio titulado "Intrauterine smoke exposure deregulates lung function, pulmonary transcriptomes, and in particular insulin-like growth factor (IGF)-1 in a sex-specific manner" a través del siguiente link: (https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5953988/)
+- Página de Bioconductor para la localización de los paquetes necesarios para el análisis: (https://www.bioconductor.org/install/)
+- Página de apoyo y soporte en la resolución de errores obtenidos durante el análisis: (https://www.biostars.org/)
+- Página de anotaciones para localizar la correspondiente al estudio realizado: (http://www.bioconductor.org/packages/release/data/annotation/)
+- Statistical Analysis of Microarray data (adapted for teaching purposes), Based on Gonzalo, Ricardo and Sanchez-Pla, Alex (2019)
+- Genómica funcional y análisis de microarrays, Módulo 2. Análisis de datos de microarrays, M. Carme Ruíz de Villa, Alex Sánchez-Pla
+- Repositorio GitHub: (https://github.com/)
+- Guía para el uso de RMarkdown: (https://bookdown.org/gboccardo/manual-ED-UCH/introduccion-al-uso-de-rmarkdown-para-la-compilacion-de-resultados-de-rstudio-en-diferentes-formatos.html)
